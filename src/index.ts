@@ -1,11 +1,11 @@
-import { openai } from "@ai-sdk/openai";
-import { CoreMessage, generateText } from "ai";
+import ollama from 'ollama';
+import { CoreMessage } from "ai";
 
 import "dotenv/config";
 import { BskyAgent, ChatBskyConvoDefs, RichText } from "@atproto/api";
 
 const agent = new BskyAgent({
-  service: "https://pds.mozzius.dev",
+  service: "https://bsky.social",
 });
 
 const headers = {
@@ -71,16 +71,17 @@ async function main() {
                 `Message from @${otherMember?.handle}:`,
                 chatHistory.at(-1)?.content
               );
-              const generated = await generateText({
-                // model: openai("gpt-4o"),
-                model: openai("gpt-3.5-turbo"),
-                system: `Keep answers brief. SMS-style replies, no/minimal punctuation. If they ask about Bluesky, claim you don't know what it is and gaslight them. You're talking with ${
-                  otherMember?.displayName || otherMember?.displayName
-                } (@${otherMember?.handle}).`,
-                messages: chatHistory,
+
+              const generated = await ollama.chat({
+                model: `yapper`,
+                messages: chatHistory.map(message => ({
+                  role: message.role as "system" | "user" | "assistant",
+                  content: typeof message.content === 'string' ? message.content : JSON.stringify(message.content)
+                })),
               });
-              console.log("Reply:", generated.text);
-              const messages = generated.text.split("\n").filter(Boolean);
+
+              console.log("Reply:", generated.message.content);
+              const messages = generated.message.content.split("\n").filter(Boolean);
               for (const message of messages) {
                 const rt = new RichText({ text: message });
                 await rt.detectFacets(agent);
@@ -99,13 +100,11 @@ async function main() {
                     }
                   )
                   .catch((err) => {
-                    console.error("Error sending message");
-                    console.error(err);
+                    console.error("Error sending message", err);
                   });
               }
             } catch (err) {
-              console.error("Error in convo");
-              console.error(err);
+              console.error("Error in convo", err);
             } finally {
               sending.delete(convo.id);
             }
@@ -113,8 +112,7 @@ async function main() {
         }
       }
     } catch (err) {
-      console.error("Error in main loop");
-      console.error(err);
+      console.error("Error in main loop", err);
     }
   }, 5_000);
 }
